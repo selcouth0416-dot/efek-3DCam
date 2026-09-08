@@ -2,333 +2,317 @@ import * as THREE from 'three';
 
 export class LilyModel {
   public group: THREE.Group;
-  private innerPetals: THREE.Mesh[] = [];
-  private outerPetals: THREE.Mesh[] = [];
-  private allPetals: THREE.Mesh[] = [];
-  private stamens: { group: THREE.Group; anther: THREE.Mesh; baseAngle: number }[] = [];
-  private pistilGroup: THREE.Group;
-  private stemGroup: THREE.Group;
-  private projectionRings: THREE.Mesh[] = [];
-  private holoParticles: THREE.Points;
-  private petalMaterials: THREE.Material[] = [];
-  private wireframes: THREE.LineSegments[] = [];
+  private flowerGroups: THREE.Group[] = [];
+  private leaves: THREE.Mesh[] = [];
+  private pollenParticles: THREE.Points;
 
   constructor() {
     this.group = new THREE.Group();
 
-    // 1. Tekstur Hologram Gradasi Optik & Garis Pendaran Laser
-    const holoCanvas = document.createElement('canvas');
-    holoCanvas.width = 512;
-    holoCanvas.height = 1024;
-    const ctx = holoCanvas.getContext('2d')!;
+    // 1. Tekstur Kelopak Bunga Stargazer Lily
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 1024;
+    const ctx = canvas.getContext('2d')!;
 
     const grad = ctx.createLinearGradient(0, 1024, 0, 0);
-    grad.addColorStop(0, 'rgba(6, 182, 212, 0.95)');   // Cyan Neon Base
-    grad.addColorStop(0.2, 'rgba(56, 189, 248, 0.9)');  // Sky Blue
-    grad.addColorStop(0.45, 'rgba(168, 85, 247, 0.85)');// Electric Violet
-    grad.addColorStop(0.7, 'rgba(236, 72, 153, 0.9)');  // Hot Magenta
-    grad.addColorStop(0.9, 'rgba(251, 113, 133, 0.95)');// Radiant Coral
-    grad.addColorStop(1.0, 'rgba(255, 255, 255, 1.0)');  // Laser White Rim
+    grad.addColorStop(0, '#84cc16');    // Hijau pangkal
+    grad.addColorStop(0.1, '#d9f99d');  // Kuning muda
+    grad.addColorStop(0.2, '#ffffff');  // Pita putih
+    grad.addColorStop(0.35, '#ec4899'); // Hot pink cerah
+    grad.addColorStop(0.58, '#be123c'); // Merah ruby
+    grad.addColorStop(0.82, '#fb7185'); // Merah muda
+    grad.addColorStop(1.0, '#ffffff');  // Pinggiran putih
 
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 512, 1024);
 
-    // Garis urat kelopak holografik halus
-    ctx.lineWidth = 2;
-    for (let i = 0; i < 48; i++) {
-      const y = 150 + i * 18;
-      ctx.strokeStyle = `rgba(255, 255, 255, ${0.15 + (i % 4) * 0.08})`;
+    // Urat halus kelopak
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < 40; i++) {
+      const y = 160 + i * 20;
+      ctx.strokeStyle = `rgba(159, 18, 57, ${0.15 + (i % 3) * 0.06})`;
       ctx.beginPath();
       ctx.moveTo(256, y);
-      ctx.quadraticCurveTo(140, y - 20, 20, y + 40);
+      ctx.quadraticCurveTo(140, y - 20, 30, y + 40);
       ctx.stroke();
+
       ctx.beginPath();
       ctx.moveTo(256, y);
-      ctx.quadraticCurveTo(372, y - 20, 492, y + 40);
+      ctx.quadraticCurveTo(372, y - 20, 482, y + 40);
       ctx.stroke();
     }
 
-    // Garis-garis scanline hologram
-    for (let y = 0; y < 1024; y += 4) {
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-      ctx.fillRect(0, y, 512, 1);
+    // Bintik-bintik merah gelap Stargazer
+    ctx.fillStyle = '#4c0519';
+    for (let i = 0; i < 280; i++) {
+      const rx = 160 + Math.random() * 192;
+      const ry = 280 + Math.random() * 500;
+      const radius = 1.2 + Math.random() * 2.2;
+      ctx.beginPath();
+      ctx.arc(rx, ry, radius, 0, Math.PI * 2);
+      ctx.fill();
     }
 
-    const holoTexture = new THREE.CanvasTexture(holoCanvas);
-    holoTexture.wrapS = THREE.ClampToEdgeWrapping;
-    holoTexture.wrapT = THREE.ClampToEdgeWrapping;
+    const lilyTexture = new THREE.CanvasTexture(canvas);
+    lilyTexture.wrapS = THREE.ClampToEdgeWrapping;
+    lilyTexture.wrapT = THREE.ClampToEdgeWrapping;
 
-    // 2. Material Hologram Transparan Bercahaya Sejati
-    const petalMat = new THREE.MeshPhysicalMaterial({
-      map: holoTexture,
-      color: 0x38bdf8,
-      emissive: 0x0284c7,
-      emissiveIntensity: 0.65,
-      emissiveMap: holoTexture,
-      transparent: true,
-      opacity: 0.88,
-      roughness: 0.15,
-      metalness: 0.1,
-      transmission: 0.6,
-      ior: 1.45,
+    const petalMaterial = new THREE.MeshStandardMaterial({
+      map: lilyTexture,
+      roughness: 0.35,
+      metalness: 0.05,
       side: THREE.DoubleSide,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending, // Efek Cahaya Hologram Asli
     });
-    this.petalMaterials.push(petalMat);
 
-    // 3. Bentuk Kelopak Lentik Melengkung Alami
-    const createNaturalPetalGeometry = (widthScale: number, curveIntensity: number) => {
-      const geom = new THREE.PlaneGeometry(0.85 * widthScale, 2.4, 28, 52);
+    // 2. Geometri Kelopak Melengkung Mekar Alami
+    const createLilyPetal = (length: number, maxWidth: number, reflexAngle: number) => {
+      const widthSegments = 20;
+      const lengthSegments = 32;
+      const geom = new THREE.BufferGeometry();
+
+      const vertices: number[] = [];
+      const uvs: number[] = [];
+      const indices: number[] = [];
+
+      for (let j = 0; j <= lengthSegments; j++) {
+        const v = j / lengthSegments;
+        const curRadius = v * length;
+        const arch = Math.sin(v * Math.PI * 0.8) * 0.38 - Math.pow(v, 2.2) * (0.65 * reflexAngle);
+        const width = Math.sin(v * Math.PI) * (maxWidth * (1.1 - v * 0.25));
+
+        for (let i = 0; i <= widthSegments; i++) {
+          const u = i / widthSegments;
+          const normU = (u - 0.5) * 2;
+          const x = normU * (width * 0.5);
+          const cup = (1 - normU * normU) * (0.12 * Math.sin(v * Math.PI));
+          const ruffle = Math.sin(v * 20) * 0.02 * Math.abs(normU);
+
+          vertices.push(x, arch + cup + ruffle, curRadius);
+          uvs.push(u, 1 - v);
+        }
+      }
+
+      for (let j = 0; j < lengthSegments; j++) {
+        for (let i = 0; i < widthSegments; i++) {
+          const a = j * (widthSegments + 1) + i;
+          const b = (j + 1) * (widthSegments + 1) + i;
+          const c = (j + 1) * (widthSegments + 1) + (i + 1);
+          const d = j * (widthSegments + 1) + (i + 1);
+
+          indices.push(a, b, d);
+          indices.push(b, c, d);
+        }
+      }
+
+      geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      geom.setIndex(indices);
+      geom.computeVertexNormals();
+
+      return geom;
+    };
+
+    const innerPetalGeo = createLilyPetal(1.4, 0.72, 1.15);
+    const outerPetalGeo = createLilyPetal(1.5, 0.65, 1.35);
+
+    const stemMat = new THREE.MeshStandardMaterial({
+      color: 0x2e7d32,
+      roughness: 0.5,
+      metalness: 0.05,
+    });
+    const filamentMat = new THREE.MeshStandardMaterial({
+      color: 0xd9f99d,
+      roughness: 0.4,
+    });
+    const antherMat = new THREE.MeshStandardMaterial({
+      color: 0xc2410c,
+      roughness: 0.7,
+      emissive: 0x7c2d12,
+      emissiveIntensity: 0.2,
+    });
+
+    const buildOpenLilyBloom = (scale: number): THREE.Group => {
+      const flowerGroup = new THREE.Group();
+
+      const receptacle = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.05, 0.15, 12), stemMat);
+      receptacle.position.set(0, -0.05, 0);
+      flowerGroup.add(receptacle);
+
+      // 3 Kelopak Dalam Mekar
+      for (let i = 0; i < 3; i++) {
+        const angle = (i / 3) * Math.PI * 2;
+        const petal = new THREE.Mesh(innerPetalGeo, petalMaterial);
+        petal.rotation.y = angle;
+        petal.rotation.x = -0.32;
+        flowerGroup.add(petal);
+      }
+
+      // 3 Kelopak Luar Mekar Lebih Lebar
+      for (let i = 0; i < 3; i++) {
+        const angle = (i / 3) * Math.PI * 2 + Math.PI / 3;
+        const petal = new THREE.Mesh(outerPetalGeo, petalMaterial);
+        petal.rotation.y = angle;
+        petal.rotation.x = -0.42;
+        flowerGroup.add(petal);
+      }
+
+      // Benang Sari Rapi di Dalam Bunga (Tidak Menusuk Keluar)
+      for (let s = 0; s < 6; s++) {
+        const sAngle = (s / 6) * Math.PI * 2 + 0.5;
+        const reach = 0.28;
+        const endX = Math.cos(sAngle) * reach;
+        const endZ = Math.sin(sAngle) * reach;
+
+        const fCurve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(0, 0, 0),
+          new THREE.Vector3(endX * 0.4, 0.22, endZ * 0.4),
+          new THREE.Vector3(endX, 0.42, endZ),
+        ]);
+        const filament = new THREE.Mesh(new THREE.TubeGeometry(fCurve, 10, 0.012, 6, false), filamentMat);
+        flowerGroup.add(filament);
+
+        const anther = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.11, 8), antherMat);
+        anther.position.set(endX, 0.43, endZ);
+        anther.rotation.z = Math.PI / 2;
+        anther.rotation.y = sAngle;
+        flowerGroup.add(anther);
+      }
+
+      // Putik Tengah
+      const pistilCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0.01, 0.25, 0.01),
+        new THREE.Vector3(0, 0.48, 0),
+      ]);
+      const pistil = new THREE.Mesh(new THREE.TubeGeometry(pistilCurve, 10, 0.02, 6, false), filamentMat);
+      flowerGroup.add(pistil);
+
+      const stigma = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), stemMat);
+      stigma.position.set(0, 0.49, 0);
+      flowerGroup.add(stigma);
+
+      flowerGroup.scale.set(scale, scale, scale);
+      return flowerGroup;
+    };
+
+    // Bunga Utama Menghadap ke Depan
+    const mainFlower = buildOpenLilyBloom(0.85);
+    mainFlower.position.set(0.15, 0.05, 0.2);
+    mainFlower.rotation.set(1.2, 0.25, -0.3);
+    this.flowerGroups.push(mainFlower);
+    this.group.add(mainFlower);
+
+    // Bunga Kedua Menghadap Kiri
+    const leftFlower = buildOpenLilyBloom(0.72);
+    leftFlower.position.set(-0.35, 0.35, 0.05);
+    leftFlower.rotation.set(1.0, -0.85, 0.4);
+    this.flowerGroups.push(leftFlower);
+    this.group.add(leftFlower);
+
+    // Kuntum Atas
+    const topFlower = buildOpenLilyBloom(0.58);
+    topFlower.position.set(0.0, 0.75, -0.1);
+    topFlower.rotation.set(0.65, 0.2, 0.0);
+    this.flowerGroups.push(topFlower);
+    this.group.add(topFlower);
+
+    // Batang Utama
+    const mainStemCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0.0, 0.75, -0.1),
+      new THREE.Vector3(-0.1, 0.35, -0.02),
+      new THREE.Vector3(0.05, -0.15, 0.05),
+      new THREE.Vector3(0.02, -0.95, 0.0),
+    ]);
+    const mainStem = new THREE.Mesh(new THREE.TubeGeometry(mainStemCurve, 24, 0.045, 8, false), stemMat);
+    this.group.add(mainStem);
+
+    const bMainCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0.05, -0.15, 0.05),
+      new THREE.Vector3(0.1, -0.05, 0.12),
+      new THREE.Vector3(0.15, 0.05, 0.2),
+    ]);
+    this.group.add(new THREE.Mesh(new THREE.TubeGeometry(bMainCurve, 8, 0.035, 6, false), stemMat));
+
+    const bLeftCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-0.1, 0.35, -0.02),
+      new THREE.Vector3(-0.22, 0.35, 0.02),
+      new THREE.Vector3(-0.35, 0.35, 0.05),
+    ]);
+    this.group.add(new THREE.Mesh(new THREE.TubeGeometry(bLeftCurve, 8, 0.035, 6, false), stemMat));
+
+    // Daun Botani
+    const leafMat = new THREE.MeshStandardMaterial({
+      color: 0x1e7e34,
+      roughness: 0.45,
+      side: THREE.DoubleSide,
+    });
+
+    const createLeafGeo = () => {
+      const geom = new THREE.PlaneGeometry(0.3, 1.2, 12, 18);
       const pos = geom.attributes.position;
-
       for (let i = 0; i < pos.count; i++) {
-        const x = pos.getX(i);
         const y = pos.getY(i);
-        const normY = (y + 1.2) / 2.4;
-
-        const widthCurve = Math.sin(normY * Math.PI) * (1 - normY * 0.25);
-        const newX = x * (0.18 + widthCurve * 1.05);
-        pos.setX(i, newX);
-
-        // Lengkungan lentik alami ke belakang
-        const arch = -Math.sin(normY * Math.PI * 0.82) * (0.48 * curveIntensity) -
-          (normY > 0.55 ? Math.pow(normY - 0.55, 2) * (0.75 * curveIntensity) : 0);
-
-        // Cekungan kelopak (U-shape)
-        const cup = Math.pow(Math.abs(newX), 1.5) * 0.45 * (1 - normY * 0.4);
-
-        // Ombak halus di tepi kelopak
-        const ruffle = Math.sin(normY * 16) * 0.028 * Math.abs(newX);
-
-        pos.setZ(i, arch + cup + ruffle);
+        const normY = (y + 0.6) / 1.2;
+        const w = Math.sin(normY * Math.PI);
+        pos.setX(i, pos.getX(i) * w);
+        pos.setZ(i, -Math.sin(normY * Math.PI * 0.7) * 0.12);
       }
       geom.computeVertexNormals();
       return geom;
     };
+    const leafGeo = createLeafGeo();
 
-    const innerGeo = createNaturalPetalGeometry(1.05, 1.05);
-    const outerGeo = createNaturalPetalGeometry(0.92, 1.22);
-
-    const wireMat = new THREE.LineBasicMaterial({
-      color: 0x67e8f9,
-      transparent: true,
-      opacity: 0.28,
-      blending: THREE.AdditiveBlending,
+    const leafPositions = [
+      { pos: [-0.15, 0.1, 0.05], rot: [0.3, -0.9, 0.4] },
+      { pos: [0.12, -0.4, 0.08], rot: [-0.2, 1.0, -0.4] },
+      { pos: [-0.08, -0.65, -0.02], rot: [0.4, -1.2, 0.3] },
+    ];
+    leafPositions.forEach((lp) => {
+      const leaf = new THREE.Mesh(leafGeo, leafMat);
+      leaf.position.set(lp.pos[0], lp.pos[1], lp.pos[2]);
+      leaf.rotation.set(lp.rot[0], lp.rot[1], lp.rot[2]);
+      this.leaves.push(leaf);
+      this.group.add(leaf);
     });
 
-    // 4. Susun 6 Kelopak Bunga (3 Dalam + 3 Luar Selang-Seling)
-    for (let i = 0; i < 3; i++) {
-      const angle = (i / 3) * Math.PI * 2;
-      const petal = new THREE.Mesh(innerGeo, petalMat);
-      petal.rotation.y = angle;
-      petal.rotation.x = 1.05;
-      this.innerPetals.push(petal);
-      this.allPetals.push(petal);
-      this.group.add(petal);
-
-      const wire = new THREE.LineSegments(new THREE.WireframeGeometry(innerGeo), wireMat);
-      wire.rotation.copy(petal.rotation);
-      this.wireframes.push(wire);
-      this.group.add(wire);
-    }
-
-    for (let i = 0; i < 3; i++) {
-      const angle = (i / 3) * Math.PI * 2 + Math.PI / 3;
-      const petal = new THREE.Mesh(outerGeo, petalMat);
-      petal.position.set(0, -0.05, 0);
-      petal.rotation.y = angle;
-      petal.rotation.x = 1.24;
-      this.outerPetals.push(petal);
-      this.allPetals.push(petal);
-      this.group.add(petal);
-
-      const wire = new THREE.LineSegments(new THREE.WireframeGeometry(outerGeo), wireMat);
-      wire.position.copy(petal.position);
-      wire.rotation.copy(petal.rotation);
-      this.wireframes.push(wire);
-      this.group.add(wire);
-    }
-
-    // 5. Putik Tengah (Pistil) Bercahaya Hijau Mint
-    this.pistilGroup = new THREE.Group();
-    const pistilCurve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(0, -0.2, 0),
-      new THREE.Vector3(0.02, 0.45, 0.03),
-      new THREE.Vector3(0, 1.05, 0),
-      new THREE.Vector3(0, 1.42, 0),
-    ]);
-    const pistilGeo = new THREE.TubeGeometry(pistilCurve, 16, 0.032, 8, false);
-    const pistilMat = new THREE.MeshBasicMaterial({
-      color: 0x34d399,
-      transparent: true,
-      opacity: 0.9,
-      blending: THREE.AdditiveBlending,
-    });
-    this.pistilGroup.add(new THREE.Mesh(pistilGeo, pistilMat));
-
-    const stigmaMat = new THREE.MeshBasicMaterial({
-      color: 0xa7f3d0,
-      transparent: true,
-      opacity: 0.95,
-      blending: THREE.AdditiveBlending,
-    });
-    for (let s = 0; s < 3; s++) {
-      const sAngle = (s / 3) * Math.PI * 2;
-      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8), stigmaMat);
-      bulb.position.set(Math.cos(sAngle) * 0.035, 1.44, Math.sin(sAngle) * 0.035);
-      this.pistilGroup.add(bulb);
-    }
-    this.group.add(this.pistilGroup);
-
-    // 6. 6 Benang Sari (Stamens) dengan Serbuk Emas Hologram
-    const filamentMat = new THREE.MeshBasicMaterial({
-      color: 0x38bdf8,
-      transparent: true,
-      opacity: 0.85,
-      blending: THREE.AdditiveBlending,
-    });
-    const antherMat = new THREE.MeshBasicMaterial({
-      color: 0xfbbf24,
-      transparent: true,
-      opacity: 0.95,
-      blending: THREE.AdditiveBlending,
-    });
-
-    for (let i = 0; i < 6; i++) {
-      const baseAngle = (i / 6) * Math.PI * 2 + 0.3;
-      const stamenGroup = new THREE.Group();
-      const spread = 0.48;
-      const endX = Math.cos(baseAngle) * spread;
-      const endZ = Math.sin(baseAngle) * spread;
-
-      const curve = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(0, -0.15, 0),
-        new THREE.Vector3(endX * 0.35, 0.5, endZ * 0.35),
-        new THREE.Vector3(endX, 1.22, endZ),
-      ]);
-
-      const filament = new THREE.Mesh(new THREE.TubeGeometry(curve, 12, 0.02, 6, false), filamentMat);
-      stamenGroup.add(filament);
-
-      const anther = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.22, 8), antherMat);
-      anther.position.set(endX, 1.22, endZ);
-      anther.rotation.z = Math.PI / 2.2;
-      anther.rotation.y = baseAngle;
-      stamenGroup.add(anther);
-
-      this.stamens.push({ group: stamenGroup, anther, baseAngle });
-      this.group.add(stamenGroup);
-    }
-
-    // 7. Batang Hijau Hologram
-    this.stemGroup = new THREE.Group();
-    const stemCurve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0.02, -0.5, 0.02),
-      new THREE.Vector3(-0.03, -1.1, -0.02),
-    ]);
-    const stemGeo = new THREE.TubeGeometry(stemCurve, 16, 0.05, 8, false);
-    const stemMat = new THREE.MeshBasicMaterial({
-      color: 0x10b981,
-      transparent: true,
-      opacity: 0.8,
-      blending: THREE.AdditiveBlending,
-    });
-    this.stemGroup.add(new THREE.Mesh(stemGeo, stemMat));
-    this.group.add(this.stemGroup);
-
-    // 8. Cincin Proyeksi Hologram (Emitter Rings) di Bagian Bawah
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0x38bdf8,
-      transparent: true,
-      opacity: 0.45,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
-    });
-    for (let r = 0; r < 3; r++) {
-      const ringGeo = new THREE.RingGeometry(0.35 + r * 0.25, 0.38 + r * 0.25, 32);
-      const ringMesh = new THREE.Mesh(ringGeo, ringMat);
-      ringMesh.rotation.x = Math.PI / 2;
-      ringMesh.position.y = -1.15;
-      this.projectionRings.push(ringMesh);
-      this.group.add(ringMesh);
-    }
-
-    // 9. Partikel Cahaya Energi Mengambang
-    const pCount = 350;
+    // Partikel Cahaya Lembut
+    const pCount = 120;
     const pGeo = new THREE.BufferGeometry();
     const pPos = new Float32Array(pCount * 3);
     for (let i = 0; i < pCount; i++) {
-      const radius = 0.15 + Math.random() * 0.9;
-      const theta = Math.random() * Math.PI * 2;
-      const height = -1.0 + Math.random() * 2.5;
-
-      pPos[i * 3] = Math.cos(theta) * radius;
-      pPos[i * 3 + 1] = height;
-      pPos[i * 3 + 2] = Math.sin(theta) * radius;
+      pPos[i * 3] = (Math.random() - 0.5) * 1.5;
+      pPos[i * 3 + 1] = -0.7 + Math.random() * 1.8;
+      pPos[i * 3 + 2] = (Math.random() - 0.5) * 1.5;
     }
     pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
-
     const pMat = new THREE.PointsMaterial({
-      color: 0x38bdf8,
-      size: 0.035,
+      color: 0xfde047,
+      size: 0.03,
       transparent: true,
-      opacity: 0.8,
+      opacity: 0.75,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
-    this.holoParticles = new THREE.Points(pGeo, pMat);
-    this.group.add(this.holoParticles);
+    this.pollenParticles = new THREE.Points(pGeo, pMat);
+    this.group.add(this.pollenParticles);
   }
 
   public update(time: number) {
-    // Animasi Mekar & Bernafas Alami
-    const breath = Math.sin(time * 1.8) * 0.055;
-    const microSway = Math.sin(time * 1.2) * 0.025;
+    const breath = Math.sin(time * 1.5) * 0.02;
+    const sway = Math.sin(time * 1.1) * 0.025;
 
-    for (let i = 0; i < this.innerPetals.length; i++) {
-      this.innerPetals[i].rotation.x = 1.05 + breath;
-      this.innerPetals[i].rotation.z = Math.sin(time * 2.2 + i) * 0.02;
-    }
-    for (let i = 0; i < this.outerPetals.length; i++) {
-      this.outerPetals[i].rotation.x = 1.24 + breath * 1.2;
-      this.outerPetals[i].rotation.z = Math.sin(time * 2.0 + i) * 0.025;
-    }
+    this.flowerGroups[0].rotation.z = -0.3 + sway;
+    this.flowerGroups[1].rotation.z = 0.4 - sway;
+    this.flowerGroups[2].rotation.x = 0.65 + breath;
 
-    for (let i = 0; i < this.allPetals.length; i++) {
-      if (this.wireframes[i]) {
-        this.wireframes[i].rotation.copy(this.allPetals[i].rotation);
-      }
-    }
-
-    // Ayunan benang sari
-    for (let i = 0; i < this.stamens.length; i++) {
-      const st = this.stamens[i];
-      const tremor = Math.sin(time * 3.5 + i * 1.2) * 0.035;
-      st.anther.rotation.x = tremor;
-      st.group.rotation.y = Math.sin(time * 1.4 + i) * 0.02;
-    }
-
-    this.stemGroup.rotation.z = microSway * 0.5;
-    this.pistilGroup.rotation.z = microSway * 0.8;
-
-    // Putaran cincin proyektor hologram
-    for (let r = 0; r < this.projectionRings.length; r++) {
-      const ring = this.projectionRings[r];
-      ring.rotation.z = time * (0.35 + r * 0.2) * (r % 2 === 0 ? 1 : -1);
-      const scale = 1.0 + Math.sin(time * 2.5 + r) * 0.06;
-      ring.scale.set(scale, scale, scale);
-    }
-
-    // Partikel cahaya melayang naik
-    const pos = this.holoParticles.geometry.attributes.position.array as Float32Array;
+    const pos = this.pollenParticles.geometry.attributes.position.array as Float32Array;
     for (let i = 0; i < pos.length / 3; i++) {
-      pos[i * 3 + 1] += 0.008;
-      if (pos[i * 3 + 1] > 1.6) {
-        pos[i * 3 + 1] = -1.0;
+      pos[i * 3 + 1] += 0.005;
+      if (pos[i * 3 + 1] > 1.1) {
+        pos[i * 3 + 1] = -0.7;
       }
     }
-    this.holoParticles.geometry.attributes.position.needsUpdate = true;
+    this.pollenParticles.geometry.attributes.position.needsUpdate = true;
   }
 }
